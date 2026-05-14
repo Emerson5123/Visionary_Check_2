@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import '../widgets/accessible_widget.dart';
 import '../widgets/custom_app_bar.dart';
 import '../services/accessibility_service.dart';
@@ -27,7 +26,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final PermissionService    _permissionService = PermissionService();
   final BillDetectionService _detectionService  = BillDetectionService();
   final BillRepository       _billRepository    = BillRepository();
-  final ImagePicker          _imagePicker       = ImagePicker();
   bool _isProcessing = false;
 
   @override
@@ -49,64 +47,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openCamera() {
     if (_isProcessing) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => const CameraScreen()));
-  }
-
-  Future<void> _openGallery() async {
-    if (_isProcessing) return;
-    final permResult = await _permissionService.checkAndRequestPhotos();
-    if (permResult == PermissionResult.permanentlyDenied) {
-      await _tts.speak('Permiso de galería denegado. Ve a Configuración del teléfono.');
-      await _permissionService.openSettings();
-      return;
-    }
-    if (permResult != PermissionResult.granted) {
-      await _tts.speak('Se necesita permiso para acceder a la galería.');
-      return;
-    }
-    try {
-      await _tts.speak('Abriendo galería de fotos...');
-      final XFile? image = await _imagePicker.pickImage(
-          source: ImageSource.gallery, imageQuality: 95);
-      if (image == null) { await _tts.speak('No se seleccionó ninguna imagen.'); return; }
-
-      setState(() => _isProcessing = true);
-      await _tts.speak('Analizando billete...');
-      final analysis = await _detectionService.analyzeBill(image.path);
-
-      await _billRepository.insertBill(BillRecord(
-        id: const Uuid().v4(), date: DateTime.now(), imagePath: image.path,
-        isAuthentic: analysis.isAuthentic && analysis.hasBilletFeatures,
-        confidence: analysis.confidencePercentage,
-        denomination: analysis.denomination, currency: analysis.currency,
-      ));
-      await _provideFeedback(analysis);
-      if (mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => ResultScreen(
-          imagePath: image.path,
-          isAuthentic: analysis.isAuthentic && analysis.hasBilletFeatures,
-          confidence: analysis.confidencePercentage,
-          denomination: analysis.denomination,
-          currency: analysis.currency, details: analysis.details,
-        )));
-      }
-    } catch (e) {
-      await _tts.speak('Error al procesar la imagen.');
-    } finally {
-      if (mounted) setState(() => _isProcessing = false);
-    }
-  }
-
-  Future<void> _provideFeedback(BillAnalysis analysis) async {
-    final label = analysis.currency == 'USD' ? 'dólar estadounidense'
-        : analysis.currency == 'ECU' ? 'billete ecuatoriano' : 'billete';
-    if (!analysis.hasBilletFeatures) {
-      await _tts.speak('No se detectó un billete. Asegúrate de usar una foto clara.');
-    } else if (analysis.isAuthentic) {
-      await _tts.speak('¡Billete auténtico! Es un $label de ${analysis.denomination}. '
-          'Confianza ${analysis.confidencePercentage}.');
-    } else {
-      await _tts.speak('Advertencia: este $label podría ser sospechoso. Verifica manualmente.');
-    }
   }
 
   void _openHistory() => Navigator.push(context, MaterialPageRoute(builder: (_) => const HistoryScreen()));
@@ -134,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   description: 'Ícono principal. Esta aplicación verifica billetes auténticos.',
                   onActivate: () => _tts.speak(
                       'Visionary Cash Check verifica la autenticidad de billetes. '
-                          'Usa Capturar Foto o Galería para comenzar.'),
+                          'Usa Capturar Foto para comenzar.'),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(32),
@@ -187,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          'Captura o selecciona una foto\npara verificar su autenticidad',
+                          'Escanea un billete con la cámara\npara verificar su autenticidad',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: AppTheme.textOnPrimary.withOpacity(0.85),
@@ -238,20 +178,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   textColor: AppTheme.textOnPrimary,
                   icon: Icons.camera_alt,
                   height: 58,
-                  enabled: !_isProcessing,
-                ),
-
-                const SizedBox(height: 14),
-
-                // ── Botón Galería ──────────────────────────────────────────
-                AccessibleButton(
-                  description: 'Botón Seleccionar de Galería. Elige una foto existente para verificar.',
-                  label: 'Seleccionar de Galería',
-                  onActivate: _openGallery,
-                  backgroundColor: AppTheme.surface,
-                  textColor: AppTheme.primary,
-                  icon: Icons.photo_library_outlined,
-                  height: 54,
                   enabled: !_isProcessing,
                 ),
 
